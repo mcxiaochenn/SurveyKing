@@ -51,3 +51,6 @@ aj:
 
 api:
   prefix: /api
+server:
+  servlet:
+    context-path: /survey
