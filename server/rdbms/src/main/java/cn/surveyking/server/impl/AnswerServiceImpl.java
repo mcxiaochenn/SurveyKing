@@ -200,7 +200,7 @@ public class AnswerServiceImpl extends ServiceImpl<AnswerMapper, Answer> impleme
         if (request.getMetaInfo() != null) {
             request.getMetaInfo().setClientInfo(parseClientInfo(request.getMetaInfo().getClientInfo()));
         }
-        if (request.getTempSave() != null) {
+        if (request.getTempSave() == null) {
             request.setTempSave(1);
         }
         if (StringUtils.hasText(request.getId())) {

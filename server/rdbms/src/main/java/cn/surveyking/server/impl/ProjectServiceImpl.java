@@ -71,7 +71,9 @@ public class ProjectServiceImpl extends BaseService<ProjectMapper, Project> impl
                 view.setTotal(count(Wrappers.<Project>lambdaQuery().eq(Project::getParentId, view.getId())));
             } else {
                 view.setTotal(answerMapper
-                        .selectCount(Wrappers.<Answer>lambdaQuery().eq(Answer::getProjectId, view.getId())));
+                        .selectCount(Wrappers.<Answer>lambdaQuery()
+                                .eq(Answer::getTempSave, 1)
+                                .eq(Answer::getProjectId, view.getId())));
             }
         });
         return result;
