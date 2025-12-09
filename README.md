@@ -53,6 +53,10 @@
 2. 解压，双击运行 start.bat
 3. 打开浏览器访问 [http://localhost:1991](http://localhost:1991)，输入账号密码： _admin_/_123456_
 
+### EazyDevelop一键部署
+
+[没有服务器？使用EazyDevelop一键免费云部署](https://eazydevelop.eazytec-cloud.com/templates/dev-template-716f05-1762911945?q=1lzo_1Vj3QF_4wGIhC)
+
 ### 宝塔一键部署
 
 [使用宝塔快速一键部署，部署更方便，运维更简单](https://surveyking.cn/open-source/deploy/baota-simple-deploy)
