@@ -48,6 +48,7 @@ import org.springframework.util.StringUtils;
 import javax.validation.ValidationException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -451,10 +452,13 @@ public class UserServiceImpl extends BaseService<UserMapper, User> implements Us
 	@Override
 	@SneakyThrows
 	public void importUser(UserRequest request) {
-		Map<String, String> roleName2Id = roleService.list().stream()
-				.collect(Collectors.toMap(Role::getName, Role::getId));
-		Map<String, String> deptName2Id = deptMapper.selectList(null).stream()
-				.collect(Collectors.toMap(Dept::getName, Dept::getId));
+		if (request.getFile() == null || request.getFile().isEmpty()) {
+			throw new InternalServerError(i18n("user.import.fileRequired"));
+		}
+		Map<String, String> roleName2Id = buildNameIdMap(roleService.list(), Role::getName, Role::getId,
+				"user.import.duplicateRoleName");
+		Map<String, String> deptName2Id = buildNameIdMap(deptMapper.selectList(null), Dept::getName, Dept::getId,
+				"user.import.duplicateDeptName");
 		Set<String> usernameSet = new HashSet<>();
 		Set<String> existingUsernames = accountMapper
 				.selectList(Wrappers.<Account>lambdaQuery().select(Account::getAuthAccount)).stream()
@@ -481,22 +485,40 @@ public class UserServiceImpl extends BaseService<UserMapper, User> implements Us
 						}
 						// 默认密码为 123456
 						userRequest.setPassword(getCellValue(r, 2).orElse("123456"));
+						userRequest.setStatus(AppConsts.USER_STATUS.VALID);
 						userRequest.setPhone(getCellValue(r, 3).orElse(null));
 						userRequest.setEmail(getCellValue(r, 4).orElse(null));
 						String deptName = getCellValue(r, 5).orElse(null);
-						if (deptName != null && deptName2Id.containsKey(deptName)) {
-							userRequest.setDeptId(deptName2Id.get(deptName));
+						if (deptName != null) {
+							String deptId = deptName2Id.get(deptName);
+							if (deptId == null) {
+								throw new InternalServerError(i18n("user.import.deptNotFound", rowNum[0], deptName));
+							}
+							userRequest.setDeptId(deptId);
 						}
 						String roles = getCellValue(r, 6).orElse(null);
 						if (roles != null) {
-							List<String> roleIds = Arrays.stream(roles.split(",|\\s+")).filter(roleName2Id::containsKey)
-									.map(roleName2Id::get).collect(Collectors.toList());
+							List<String> roleNames = parseImportRoleNames(roles, roleName2Id);
+							if (CollectionUtils.isEmpty(roleNames)) {
+								throw new InternalServerError(i18n("user.import.roleNotFound", rowNum[0], roles));
+							}
+							List<String> missingRoleNames = roleNames.stream().filter(roleName -> !roleName2Id.containsKey(roleName))
+									.collect(Collectors.toList());
+							if (!CollectionUtils.isEmpty(missingRoleNames)) {
+								throw new InternalServerError(
+										i18n("user.import.roleNotFound", rowNum[0], String.join("、", missingRoleNames)));
+							}
+							List<String> roleIds = roleNames.stream().map(roleName2Id::get).distinct()
+									.collect(Collectors.toList());
 							userRequest.setRoles(roleIds);
 						}
 						createUser(userRequest);
 					});
 				}
 				catch (Exception e) {
+					if (e instanceof InternalServerError) {
+						throw (InternalServerError) e;
+					}
 					if (e instanceof DuplicateKeyException) {
 						throw new InternalServerError(i18n("user.import.userExists", rowNum[0]), e);
 					}
@@ -504,6 +526,39 @@ public class UserServiceImpl extends BaseService<UserMapper, User> implements Us
 				}
 			});
 		}
+	}
+
+	private List<String> parseImportRoleNames(String roles, Map<String, String> roleName2Id) {
+		String normalizedRoles = roles.trim();
+		List<String> roleNames = Arrays.stream(normalizedRoles.split("\\s*[,，、;；\\r\\n]+\\s*"))
+				.map(String::trim).filter(StringUtils::hasText).distinct().collect(Collectors.toList());
+		if (roleNames.size() == 1 && normalizedRoles.matches(".*\\s+.*")
+				&& !roleName2Id.containsKey(roleNames.get(0))) {
+			roleNames = Arrays.stream(normalizedRoles.split("\\s+")).map(String::trim).filter(StringUtils::hasText)
+					.distinct().collect(Collectors.toList());
+		}
+		return roleNames;
+	}
+
+	private <T> Map<String, String> buildNameIdMap(List<T> items, Function<T, String> nameGetter,
+			Function<T, String> idGetter, String duplicateMessageKey) {
+		Map<String, String> name2Id = new LinkedHashMap<>();
+		Set<String> duplicateNames = new LinkedHashSet<>();
+		items.forEach(item -> {
+			String name = nameGetter.apply(item);
+			if (isBlank(name)) {
+				return;
+			}
+			String normalizedName = name.trim();
+			String previousId = name2Id.putIfAbsent(normalizedName, idGetter.apply(item));
+			if (previousId != null) {
+				duplicateNames.add(normalizedName);
+			}
+		});
+		if (!duplicateNames.isEmpty()) {
+			throw new InternalServerError(i18n(duplicateMessageKey, duplicateNames.iterator().next()));
+		}
+		return name2Id;
 	}
 
 	@Override
