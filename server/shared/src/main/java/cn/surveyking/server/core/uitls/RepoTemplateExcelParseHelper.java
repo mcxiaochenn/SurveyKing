@@ -44,9 +44,11 @@ public class RepoTemplateExcelParseHelper {
         try (InputStream is = templateFile.getInputStream(); ReadableWorkbook wb = new ReadableWorkbook(is)) {
             wb.getSheets().forEach(sheet -> {
                 String sheetName = sheet.getName();
+                int[] currentRowNum = {1};
                 try (Stream<Row> rows = sheet.openStream()) {
                     rows.forEach(r -> {
                         int rowNum = r.getRowNum();
+                        currentRowNum[0] = rowNum;
 						if (rowNum == 1) {
 							// 第一行作为行头
 							parseHeader(r);
@@ -75,10 +77,16 @@ public class RepoTemplateExcelParseHelper {
 							}
 						}
                     });
+                } catch (ErrorCodeException e) {
+                    throw e;
                 } catch (Exception e) {
-                    throw new ErrorCodeException(ErrorCode.FileParseError, e);
+                    throw buildParseException(sheetName, currentRowNum[0], e);
                 }
             });
+        } catch (ErrorCodeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw buildParseException(null, null, e);
         }
         return result;
     }
@@ -255,6 +263,32 @@ public class RepoTemplateExcelParseHelper {
 
     private String generateId() {
         return NanoIdUtils.randomNanoId(4, ids);
+    }
+
+    private ErrorCodeException buildParseException(String sheetName, Integer rowNum, Exception e) {
+        StringBuilder message = new StringBuilder("题库模板导入失败");
+        if (isNotBlank(sheetName)) {
+            message.append("，工作表：").append(sheetName);
+        }
+        if (rowNum != null && rowNum > 0) {
+            message.append("，第").append(rowNum).append("行");
+        }
+        String detailMessage = extractDetailMessage(e);
+        if (isNotBlank(detailMessage)) {
+            message.append("，原因：").append(detailMessage);
+        }
+        return new ErrorCodeException(ErrorCode.FileParseError, message.toString(), e);
+    }
+
+    private String extractDetailMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null && current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        if (current == null) {
+            return null;
+        }
+        return isNotBlank(current.getMessage()) ? current.getMessage() : current.getClass().getSimpleName();
     }
 
 }

@@ -6,6 +6,7 @@ import cn.surveyking.server.core.constant.ErrorCode;
 import cn.surveyking.server.core.exception.ErrorCodeException;
 import cn.surveyking.server.core.exception.InternalServerError;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
@@ -80,9 +81,10 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ApiResponse<String>> handleErrorCodeException(HttpServletRequest request,
 			ErrorCodeException ex) {
 		ErrorCode errorCode = ex.getErrorCode();
-		log.error(String.format("handleErrorCodeError %s errorCode=%d, errorMessage=%s", request.getRequestURI(),
-				errorCode.code, errorCode.message));
-		return ResponseEntity.ok().body(new ApiResponse<>(errorCode.code, errorCode.message));
+		String errorMessage = StringUtils.defaultIfBlank(ex.getMessage(), errorCode.message);
+		log.error("handleErrorCodeError {} errorCode={}, errorMessage={}", request.getRequestURI(), errorCode.code,
+				errorMessage, ex);
+		return ResponseEntity.ok().body(new ApiResponse<>(errorCode.code, errorMessage));
 	}
 
 	@ExceptionHandler(Exception.class)

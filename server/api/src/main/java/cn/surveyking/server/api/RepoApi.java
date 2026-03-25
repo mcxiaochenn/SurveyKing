@@ -1,6 +1,8 @@
 package cn.surveyking.server.api;
 
 import cn.surveyking.server.core.common.PaginationResponse;
+import cn.surveyking.server.core.exception.ErrorCodeException;
+import cn.surveyking.server.core.exception.InternalServerError;
 import cn.surveyking.server.domain.dto.*;
 import cn.surveyking.server.service.RepoPartnerService;
 import cn.surveyking.server.service.RepoService;
@@ -98,7 +100,15 @@ public class RepoApi {
 
 	@PostMapping("/import")
 	public void importFromTemplate(RepoTemplateRequest request) {
-		repoService.importFromTemplate(request);
+		try {
+			repoService.importFromTemplate(request);
+		}
+		catch (ErrorCodeException ex) {
+			throw ex;
+		}
+		catch (Exception ex) {
+			throw new InternalServerError(ex.getMessage() != null ? ex.getMessage() : "题库模板导入失败", ex);
+		}
 	}
 
 	/**
