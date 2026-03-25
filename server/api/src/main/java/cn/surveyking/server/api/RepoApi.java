@@ -2,6 +2,7 @@ package cn.surveyking.server.api;
 
 import cn.surveyking.server.core.common.PaginationResponse;
 import cn.surveyking.server.domain.dto.*;
+import cn.surveyking.server.service.RepoPartnerService;
 import cn.surveyking.server.service.RepoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -19,6 +20,8 @@ import java.util.List;
 public class RepoApi {
 
 	private final RepoService repoService;
+
+	private final RepoPartnerService repoPartnerService;
 
 	/**
 	 * @param query
@@ -51,6 +54,24 @@ public class RepoApi {
 	@PreAuthorize("hasAuthority('repo:delete')")
 	public void deleteRepo(@RequestBody RepoRequest request) {
 		repoService.deleteRepo(request);
+	}
+
+	@GetMapping("/partner/list")
+	@PreAuthorize("hasAuthority('repo:list')")
+	public PaginationResponse<RepoPartnerView> listRepoPartner(RepoPartnerQuery query) {
+		return repoPartnerService.listRepoPartner(query);
+	}
+
+	@PostMapping("/partner/create")
+	@PreAuthorize("hasAuthority('repo:update')")
+	public void addRepoPartner(@RequestBody RepoPartnerRequest request) {
+		repoPartnerService.addRepoPartner(request);
+	}
+
+	@PostMapping("/partner/delete")
+	@PreAuthorize("hasAuthority('repo:update')")
+	public void deleteRepoPartner(@RequestBody RepoPartnerRequest request) {
+		repoPartnerService.deleteRepoPartner(request);
 	}
 
 	@PostMapping("/batchCreate")

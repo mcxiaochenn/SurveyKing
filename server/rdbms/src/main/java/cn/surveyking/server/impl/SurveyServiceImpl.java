@@ -10,6 +10,7 @@ import cn.surveyking.server.domain.mapper.ProjectViewMapper;
 import cn.surveyking.server.domain.model.*;
 import cn.surveyking.server.mapper.ProjectPartnerMapper;
 import cn.surveyking.server.service.ProjectService;
+import cn.surveyking.server.service.RepoPartnerService;
 import cn.surveyking.server.service.SurveyService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -23,6 +24,7 @@ import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -84,6 +86,8 @@ public class SurveyServiceImpl implements SurveyService {
 
     private final MessageSource messageSource;
 
+    private final RepoPartnerService repoPartnerService;
+
     /**
      * answerService 如果需要验证密码，则只有密码输入正确之后才开始加载 schema
      *
@@ -101,6 +105,12 @@ public class SurveyServiceImpl implements SurveyService {
         // 题库练习，从题库加载题目
         if (query.getRepoId() != null) {
             RepoView repo = repoService.getRpo(query.getRepoId());
+            if (repo == null || !Boolean.TRUE.equals(repo.getIsPractice())) {
+                throw new AccessDeniedException("无权限访问该题库练习");
+            }
+            if (!repoPartnerService.hasPracticePermission(query.getRepoId(), SecurityContextUtils.getUserId())) {
+                throw new AccessDeniedException("无权限访问该题库练习");
+            }
             Answer answer = answerService.getOne(Wrappers.<Answer>lambdaQuery()
                     .eq(StringUtils.isNotBlank(query.getAnswerId()), Answer::getId, query.getAnswerId())
                     .eq(Answer::getCreateBy, SecurityContextUtils.getUserId())

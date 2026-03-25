@@ -57,11 +57,20 @@ public class RepoServiceImpl extends BaseService<RepoMapper, Repo> implements Re
 
     @Override
     public PaginationResponse<RepoView> listRepo(RepoQuery query) {
+        String currentUserId = SecurityContextUtils.getUserId();
         Page<Repo> page = pageByQuery(query,
                 Wrappers.<Repo>lambdaQuery().like(isNotBlank(query.getName()), Repo::getName, query.getName())
                         .eq(StringUtils.hasText(query.getCategory()), Repo::getCategory, query.getCategory())
-                        .and(x -> x.eq(Repo::getCreateBy, SecurityContextUtils.getUserId())
-                                .or(y -> y.eq(Repo::getShared, true)))
+                        .and(x -> {
+                            if (Boolean.TRUE.equals(query.getMemberOnly())) {
+                                x.eq(Repo::getCreateBy, currentUserId).or()
+                                        .apply(
+                                                "EXISTS (SELECT 1 FROM t_repo_partner rp WHERE rp.repo_id = t_repo.id AND rp.user_id = {0})",
+                                                currentUserId);
+                            } else {
+                                x.eq(Repo::getCreateBy, currentUserId).or(y -> y.eq(Repo::getShared, true));
+                            }
+                        })
                         .eq(query.getIsPractice() != null, Repo::getIsPractice, query.getIsPractice())
                         .eq(query.getMode() != null, Repo::getMode, query.getMode()).orderByAsc(Repo::getCreateAt));
         PaginationResponse<RepoView> result = new PaginationResponse<>(page.getTotal(),

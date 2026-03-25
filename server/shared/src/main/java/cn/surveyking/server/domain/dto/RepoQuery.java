@@ -22,4 +22,6 @@ public class RepoQuery extends PageQuery {
 	private String category;
 
 	private Boolean isPractice;
+
+	private Boolean memberOnly;
 }
