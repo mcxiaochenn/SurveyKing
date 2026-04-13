@@ -149,9 +149,15 @@ public class SiliconflowChatServiceImpl implements AiChatService {
         // 构建消息列表
         List<Map<String, String>> messages = new ArrayList<>();
 
-        // 添加系统 prompt 消息
-        AiMessage prompt = getPrompt("siliconflow", selectedModel);
-        if (prompt != null && prompt.getContent() != null) {
+        // 添加系统 prompt 消息，题目解析等场景可覆盖默认提示词
+        String systemPromptContent = chatRequest.getSystemPrompt();
+        AiMessage prompt = StringUtils.hasText(systemPromptContent) ? null : getPrompt("siliconflow", selectedModel);
+        if (StringUtils.hasText(systemPromptContent)) {
+            Map<String, String> systemMessage = new HashMap<>();
+            systemMessage.put("role", "system");
+            systemMessage.put("content", systemPromptContent);
+            messages.add(systemMessage);
+        } else if (prompt != null && prompt.getContent() != null) {
             Map<String, String> systemMessage = new HashMap<>();
             systemMessage.put("role", prompt.getRole());
             systemMessage.put("content", prompt.getContent());

@@ -33,7 +33,10 @@ public final class RepoTemplateI18n {
 	}
 
 	private static String normalize(String value) {
-		return value == null ? null : value.trim().toLowerCase(Locale.ROOT);
+		if (value == null) {
+			return null;
+		}
+		return value.replaceAll("[\\s\\u00A0\\u3000]+", "").toLowerCase(Locale.ROOT);
 	}
 
 	private static Set<String> getAliases(String key, String defaultMessage) {

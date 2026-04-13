@@ -25,6 +25,11 @@ public class ChatRequest {
      */
     private List<EnterMessage> additionalMessages;
 
+    /**
+     * 自定义系统提示词，未设置时使用默认提示词
+     */
+    private String systemPrompt;
+
     @Data
     public static class EnterMessage {
         /**
