@@ -88,6 +88,16 @@ public class SystemInfo {
 		 */
 		private String recordNum;
 
+		/**
+		 * 高德地图 key
+		 */
+		private String amapKey;
+
+		/**
+		 * 高德地图安全密钥
+		 */
+		private String amapSecurityJsCode;
+
 	}
 
 	@Data

@@ -191,6 +191,12 @@ public class SystemServiceImpl implements SystemService {
 			if (isNotBlank(source.getRecordNum())) {
 				setting.setRecordNum(source.getRecordNum());
 			}
+			if (isNotBlank(source.getAmapKey())) {
+				setting.setAmapKey(source.getAmapKey());
+			}
+			if (isNotBlank(source.getAmapSecurityJsCode())) {
+				setting.setAmapSecurityJsCode(source.getAmapSecurityJsCode());
+			}
 		}
 		if (request.getAiSetting() != null) {
 			SystemInfo.AiSetting source = request.getAiSetting();
