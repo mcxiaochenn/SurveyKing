@@ -1,0 +1,12 @@
+.git
+.gitee
+.github
+client
+docs
+image
+scripts
+website
+**/.gradle
+**/build
+**/target
+**/*.log
