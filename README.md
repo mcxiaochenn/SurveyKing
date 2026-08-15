@@ -20,6 +20,12 @@
 
 [简体中文](./README.md) | [English](./README.en-us.md)
 
+## ⚠️ 仓库说明
+
+> 本仓库是为便于从 GitHub 获取源码、构建镜像和使用 Docker Compose 自部署而创建的**非官方、一次性同步仓库**。本仓库不代表 SurveyKing 原作者或上游维护团队，也不表示获得其官方维护或背书。
+>
+> 上游项目与最新代码：[https://gitee.com/surveyking/surveyking](https://gitee.com/surveyking/surveyking)。本仓库仅额外添加 GitHub Actions、GHCR 镜像构建和 Docker Compose 部署配置。项目名称、源代码及相关权利归原作者和各贡献者所有，使用时请遵守上游仓库所附开源许可证。
+
 ## 🚀 AI 驱动的开源问卷考试系统
 
 ### ✨ 核心亮点

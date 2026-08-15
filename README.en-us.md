@@ -2,6 +2,12 @@
 
 English | [简体中文](./README.md)
 
+## ⚠️ Repository Notice
+
+> This is an **unofficial, one-time synchronization repository** created to make the source available on GitHub and provide GitHub Actions, a GHCR image, and Docker Compose deployment. It is not maintained or endorsed by the original SurveyKing authors or upstream maintainers.
+>
+> Upstream project and latest source: [https://gitee.com/surveyking/surveyking](https://gitee.com/surveyking/surveyking). The project name, source code, and associated rights belong to their original authors and contributors. Use of the project remains subject to the open-source license included by upstream.
+
 ![preview-surveyking](./docs/preview.gif)
 
 [BMI calculator survey](https://surveyking.cn/s/q12345)
