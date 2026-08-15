@@ -22,7 +22,7 @@ services:
       start_period: 30s
 
   surveyking:
-    image: ghcr.io/mcxiaochenn/surveyking:latest
+    image: ghcr.nju.edu.cn/mcxiaochenn/surveyking:latest
     restart: unless-stopped
     depends_on:
       mysql:
