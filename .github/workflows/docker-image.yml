@@ -54,3 +54,37 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      MYSQL_PASSWORD: ci_surveyking_password
+      MYSQL_ROOT_PASSWORD: ci_root_password
+      SURVEYKING_PORT: 1991
+      JAVA_OPTS: -Xms128m -Xmx512m -Duser.timezone=Asia/Shanghai
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start Docker Compose stack
+        run: docker compose up -d
+
+      - name: Wait for SurveyKing
+        shell: bash
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error http://127.0.0.1:1991/ > /dev/null; then
+              docker compose ps
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps
+          docker compose logs
+          exit 1
+
+      - name: Stop Docker Compose stack
+        if: always()
+        run: docker compose down --volumes
