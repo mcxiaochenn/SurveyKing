@@ -10,6 +10,7 @@ FROM eclipse-temurin:8-jre
 
 WORKDIR /app
 COPY --from=build /workspace/server/api/target/surveyking-*.jar /app/surveyking.jar
+COPY --from=build /workspace/server/rdbms/src/main/resources/scripts/init-mysql.sql /docker-init/01-init.sql
 
 EXPOSE 1991
 

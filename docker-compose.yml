@@ -1,7 +1,17 @@
 services:
+  database-init:
+    image: ghcr.nju.edu.cn/mcxiaochenn/surveyking:latest
+    restart: "no"
+    entrypoint: ["sh", "-c", "cp /docker-init/01-init.sql /init/01-init.sql"]
+    volumes:
+      - ./data/init:/init
+
   mysql:
     image: mysql:8.0
     restart: unless-stopped
+    depends_on:
+      database-init:
+        condition: service_completed_successfully
     environment:
       TZ: Asia/Shanghai
       MYSQL_DATABASE: surveyking
@@ -13,7 +23,7 @@ services:
       - --collation-server=utf8mb4_unicode_ci
     volumes:
       - ./data/mysql:/var/lib/mysql
-      - ./server/rdbms/src/main/resources/scripts/init-mysql.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./data/init/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 10s
@@ -35,7 +45,7 @@ services:
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx1024m -Duser.timezone=Asia/Shanghai}
       AI_SILICONFLOW_TOKEN: ${AI_SILICONFLOW_TOKEN:-your_token}
     ports:
-      - "${SURVEYKING_PORT:-1991}:1991"
+      - "127.0.0.1:${SURVEYKING_PORT:-1991}:1991"
     volumes:
       - ./data/files:/app/files
       - ./data/logs:/app/logs
