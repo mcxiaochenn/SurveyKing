@@ -55,7 +55,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  smoke-test-ghcr:
+  smoke_test_ghcr:
     needs: build
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -98,7 +98,7 @@ jobs:
         if: always()
         run: docker compose down --volumes || true
 
-  smoke-test-mirror:
+  smoke_test_mirror:
     needs: build
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -142,15 +142,15 @@ jobs:
         run: docker compose down --volumes || true
 
   smoke-test:
-    needs: [smoke-test-ghcr, smoke-test-mirror]
+    needs: [smoke_test_ghcr, smoke_test_mirror]
     if: always()
     runs-on: ubuntu-latest
 
     steps:
       - name: Require one successful registry smoke test
         env:
-          GHCR_PASSED: ${{ needs.smoke-test-ghcr.outputs.passed }}
-          MIRROR_PASSED: ${{ needs.smoke-test-mirror.outputs.passed }}
+          GHCR_PASSED: ${{ needs.smoke_test_ghcr.outputs.passed }}
+          MIRROR_PASSED: ${{ needs.smoke_test_mirror.outputs.passed }}
         shell: bash
         run: |
           if [ "$GHCR_PASSED" = true ] || [ "$MIRROR_PASSED" = true ]; then
