@@ -18,6 +18,13 @@ test/
 !server/rdbms/src/test/java/cn/surveyking/server/impl/
 !server/rdbms/src/test/java/cn/surveyking/server/domain/
 !server/rdbms/src/test/java/cn/surveyking/server/domain/mapper/
+!server/api/src/test/
+!server/api/src/test/java/
+!server/api/src/test/java/cn/
+!server/api/src/test/java/cn/surveyking/
+!server/api/src/test/java/cn/surveyking/server/
+!server/api/src/test/java/cn/surveyking/server/core/
+!server/api/src/test/java/cn/surveyking/server/core/config/
 build.sh
 # Dependencies
 /node_modules
