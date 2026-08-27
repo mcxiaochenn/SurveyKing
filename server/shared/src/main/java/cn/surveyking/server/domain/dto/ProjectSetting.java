@@ -267,6 +267,11 @@ public class ProjectSetting {
 		private Boolean exerciseMode;
 
 		/**
+		 * 模拟考模式，确认答案后显示结果并锁定题目
+		 */
+		private Boolean mockExamMode;
+
+		/**
 		 * 闯关模式，打完本题才能答下一题
 		 */
 		private Boolean passMode;

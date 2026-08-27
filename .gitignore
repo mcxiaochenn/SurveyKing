@@ -10,6 +10,14 @@ bin/
 .projecttarget/
 target/
 test/
+!server/rdbms/src/test/
+!server/rdbms/src/test/java/
+!server/rdbms/src/test/java/cn/
+!server/rdbms/src/test/java/cn/surveyking/
+!server/rdbms/src/test/java/cn/surveyking/server/
+!server/rdbms/src/test/java/cn/surveyking/server/impl/
+!server/rdbms/src/test/java/cn/surveyking/server/domain/
+!server/rdbms/src/test/java/cn/surveyking/server/domain/mapper/
 build.sh
 # Dependencies
 /node_modules

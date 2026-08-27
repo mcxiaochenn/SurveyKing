@@ -94,6 +94,7 @@ public class ProjectServiceImpl extends BaseService<ProjectMapper, Project> impl
         if (project.getSurvey() != null) {
             project.getSurvey().setId(projectId);
         }
+        normalizeExamModes(project.getSetting(), null);
         if (ProjectModeEnum.folder.equals(request.getMode())) {
             project.setPriority(
                     count(Wrappers.<Project>lambdaQuery().eq(Project::getMode, ProjectModeEnum.folder)) + 1);
@@ -131,15 +132,60 @@ public class ProjectServiceImpl extends BaseService<ProjectMapper, Project> impl
             if (request.getSettingKey() != null) {
                 validateSettingKey(request.getSettingKey());
                 // 实现单个设置的更新
-                ProjectSetting setting = getById(request.getId()).getSetting();
+                Project projectInDb = getById(request.getId());
+                ProjectSetting setting = projectInDb.getSetting();
+                if (setting == null) {
+                    setting = new ProjectSetting();
+                }
+                if (setting.getExamSetting() == null) {
+                    setting.setExamSetting(new ProjectSetting.ExamSetting());
+                }
                 spelParser.parseExpression(request.getSettingKey()).setValue(setting, request.getSettingValue());
+                normalizeExamModes(setting, request.getSettingKey());
                 project.setSetting(setting);
                 // 同步更新项目状态
                 if ("status".equals(request.getSettingKey())) {
                     project.setStatus((Integer) request.getSettingValue());
                 }
+            } else {
+                normalizeExamModes(project.getSetting(), null);
             }
             updateById(project);
+        }
+    }
+
+    /**
+     * 统一维护考试练习模式与模拟考模式的互斥关系。
+     *
+     * @param setting 完整项目设置
+     * @param changedSettingKey 本次修改的单字段；整份设置写入时传 null
+     */
+    static void normalizeExamModes(ProjectSetting setting, String changedSettingKey) {
+        if (setting == null || setting.getExamSetting() == null) {
+            return;
+        }
+        ProjectSetting.ExamSetting examSetting = setting.getExamSetting();
+        boolean mockExamMode = Boolean.TRUE.equals(examSetting.getMockExamMode());
+        boolean exerciseMode = Boolean.TRUE.equals(examSetting.getExerciseMode());
+        boolean randomSurveyWrong = Boolean.TRUE.equals(examSetting.getRandomSurveyWrong());
+
+        if (changedSettingKey == null) {
+            if (mockExamMode && (exerciseMode || randomSurveyWrong)) {
+                throw new ValidationException("模拟考模式不能与练习模式或错题练习同时开启");
+            }
+            return;
+        }
+
+        if ("examSetting.mockExamMode".equals(changedSettingKey) && mockExamMode) {
+            examSetting.setExerciseMode(false);
+            examSetting.setRandomSurveyWrong(false);
+        } else if ("examSetting.exerciseMode".equals(changedSettingKey) && exerciseMode) {
+            examSetting.setMockExamMode(false);
+        } else if ("examSetting.randomSurveyWrong".equals(changedSettingKey) && randomSurveyWrong) {
+            examSetting.setExerciseMode(true);
+            examSetting.setMockExamMode(false);
+        } else if (mockExamMode && exerciseMode) {
+            throw new ValidationException("模拟考模式不能与练习模式同时开启");
         }
     }
 
