@@ -1,6 +1,6 @@
 services:
   database-init:
-    image: ghcr.nju.edu.cn/mcxiaochenn/surveyking:latest
+    image: ${SURVEYKING_IMAGE:-ghcr.nju.edu.cn/mcxiaochenn/surveyking:latest}
     restart: "no"
     entrypoint: ["sh", "-c", "cp /docker-init/01-init.sql /init/01-init.sql"]
     volumes:
@@ -32,7 +32,7 @@ services:
       start_period: 30s
 
   surveyking:
-    image: ghcr.nju.edu.cn/mcxiaochenn/surveyking:latest
+    image: ${SURVEYKING_IMAGE:-ghcr.nju.edu.cn/mcxiaochenn/surveyking:latest}
     restart: unless-stopped
     depends_on:
       mysql:

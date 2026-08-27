@@ -55,36 +55,106 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  smoke-test:
+  smoke-test-ghcr:
     needs: build
     runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 5
     env:
       MYSQL_PASSWORD: ci_surveyking_password
       MYSQL_ROOT_PASSWORD: ci_root_password
       SURVEYKING_PORT: 1991
+      SURVEYKING_IMAGE: ghcr.io/${{ env.IMAGE_NAME }}:latest
       JAVA_OPTS: -Xms128m -Xmx512m -Duser.timezone=Asia/Shanghai
+    outputs:
+      passed: ${{ steps.smoke.outputs.passed }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Start Docker Compose stack
-        run: docker compose up -d
-
-      - name: Wait for SurveyKing
+      - name: Start and check SurveyKing
+        id: smoke
         shell: bash
         run: |
-          for attempt in {1..60}; do
-            if curl --fail --silent --show-error http://127.0.0.1:1991/api/system | grep --quiet '"code":200'; then
-              docker compose ps
-              exit 0
-            fi
-            sleep 5
-          done
-          docker compose ps
-          docker compose logs
-          exit 1
+          set -uo pipefail
+          passed=false
+          if timeout 150s docker compose up -d; then
+            for attempt in {1..24}; do
+              if curl --fail --silent --show-error http://127.0.0.1:1991/api/system | grep --quiet '"code":200'; then
+                passed=true
+                break
+              fi
+              sleep 5
+            done
+          fi
+          docker compose ps || true
+          if [ "$passed" != true ]; then
+            docker compose logs || true
+          fi
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
 
       - name: Stop Docker Compose stack
         if: always()
-        run: docker compose down --volumes
+        run: docker compose down --volumes || true
+
+  smoke-test-mirror:
+    needs: build
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 5
+    env:
+      MYSQL_PASSWORD: ci_surveyking_password
+      MYSQL_ROOT_PASSWORD: ci_root_password
+      SURVEYKING_PORT: 1991
+      SURVEYKING_IMAGE: ghcr.nju.edu.cn/mcxiaochenn/surveyking:latest
+      JAVA_OPTS: -Xms128m -Xmx512m -Duser.timezone=Asia/Shanghai
+    outputs:
+      passed: ${{ steps.smoke.outputs.passed }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start and check SurveyKing
+        id: smoke
+        shell: bash
+        run: |
+          set -uo pipefail
+          passed=false
+          if timeout 150s docker compose up -d; then
+            for attempt in {1..24}; do
+              if curl --fail --silent --show-error http://127.0.0.1:1991/api/system | grep --quiet '"code":200'; then
+                passed=true
+                break
+              fi
+              sleep 5
+            done
+          fi
+          docker compose ps || true
+          if [ "$passed" != true ]; then
+            docker compose logs || true
+          fi
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+
+      - name: Stop Docker Compose stack
+        if: always()
+        run: docker compose down --volumes || true
+
+  smoke-test:
+    needs: [smoke-test-ghcr, smoke-test-mirror]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require one successful registry smoke test
+        env:
+          GHCR_PASSED: ${{ needs.smoke-test-ghcr.outputs.passed }}
+          MIRROR_PASSED: ${{ needs.smoke-test-mirror.outputs.passed }}
+        shell: bash
+        run: |
+          if [ "$GHCR_PASSED" = true ] || [ "$MIRROR_PASSED" = true ]; then
+            exit 0
+          fi
+          echo "Both registry smoke tests failed or timed out." >&2
+          exit 1
