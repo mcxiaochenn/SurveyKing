@@ -20,6 +20,7 @@ import path from "node:path";
 
 const staticDir = path.resolve(fileURLToPath(new URL("../server/api/src/main/resources/static/", import.meta.url)));
 const marker = "/* surveyking-mock-exam-patch:v1 */";
+const resultMarker = "/* surveyking-mock-exam-result:v2 */";
 const mockSwitch = '(0,k.jsx)(le.rs,{name:"mockExamMode",title:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.title",defaultMessage:"模拟考模式"}),tooltip:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.tooltip",defaultMessage:"作答后需点击确认答案，确认后显示正误、正确答案与解析，并且不能再次修改。"})})';
 const settingDelimiter = '),(0,k.jsx)(le.rs,{name:"randomSurveyWrong"';
 const brokenSettingAnchor = `,${mockSwitch}${settingDelimiter}`;
@@ -114,14 +115,29 @@ function patchAnswer(source) {
   return addMarker(source);
 }
 
+function reviewButtonV1(mobile, storeVar = "n", reviewVar = mobile ? "t" : "i", questionVar = "r.qId", buttonVar = "R.Z", jsxVar = "e") {
+  const old = mobile
+    ? `${reviewVar}&&!${reviewVar}.visible&&(!${storeVar}.props||!${storeVar}.props.mockExamMode||${storeVar}.canConfirm(${questionVar}))?(0,${jsxVar}.jsx)(${buttonVar},{block:!0,ghost:!0,className:"review-answer-btn",style:{marginTop:10},onClick:function(){${reviewVar}.visible=!0},children:"\\u67E5\\u770B\\u7B54\\u6848"})`
+    : 'i&&!i.visible&&(!n.props||!n.props.mockExamMode||n.canConfirm(t.qId))?(0,e.jsx)("span",{className:"review-answer-btn",onClick:function(){i.visible=!0},children:"\\u67E5\\u770B\\u7B54\\u6848"})';
+  return mobile
+    ? `${reviewVar}&&!${reviewVar}.visible&&(!${storeVar}.props||!${storeVar}.props.mockExamMode||${storeVar}.canConfirm(${questionVar}))?(0,${jsxVar}.jsx)(${buttonVar},{block:!0,ghost:!0,className:"review-answer-btn",style:{marginTop:10},onClick:function(){${storeVar}.props&&${storeVar}.props.mockExamMode?${storeVar}.confirmAnswer(${questionVar}):${reviewVar}.visible=!0},children:${storeVar}.props&&${storeVar}.props.mockExamMode?"确认答案":"\\u67E5\\u770B\\u7B54\\u6848"})`
+    : 'i&&!i.visible&&(!n.props||!n.props.mockExamMode||n.canConfirm(t.qId))?(0,e.jsx)("span",{className:"review-answer-btn",onClick:function(){n.props&&n.props.mockExamMode?n.confirmAnswer(t.qId):i.visible=!0},children:n.props&&n.props.mockExamMode?"确认答案":"\\u67E5\\u770B\\u7B54\\u6848"})';
+}
+
 function patchReviewButton(source, mobile, storeVar = "n", reviewVar = mobile ? "t" : "i", questionVar = "r.qId", buttonVar = "R.Z", jsxVar = "e") {
   const old = mobile
     ? `${reviewVar}&&!${reviewVar}.visible&&(!${storeVar}.props||!${storeVar}.props.mockExamMode||${storeVar}.canConfirm(${questionVar}))?(0,${jsxVar}.jsx)(${buttonVar},{block:!0,ghost:!0,className:"review-answer-btn",style:{marginTop:10},onClick:function(){${reviewVar}.visible=!0},children:"\\u67E5\\u770B\\u7B54\\u6848"})`
     : 'i&&!i.visible&&(!n.props||!n.props.mockExamMode||n.canConfirm(t.qId))?(0,e.jsx)("span",{className:"review-answer-btn",onClick:function(){i.visible=!0},children:"\\u67E5\\u770B\\u7B54\\u6848"})';
-  const replacement = mobile
-    ? `${reviewVar}&&!${reviewVar}.visible&&(!${storeVar}.props||!${storeVar}.props.mockExamMode||${storeVar}.canConfirm(${questionVar}))?(0,${jsxVar}.jsx)(${buttonVar},{block:!0,ghost:!0,className:"review-answer-btn",style:{marginTop:10},onClick:function(){${storeVar}.props&&${storeVar}.props.mockExamMode?${storeVar}.confirmAnswer(${questionVar}):${reviewVar}.visible=!0},children:${storeVar}.props&&${storeVar}.props.mockExamMode?"确认答案":"\\u67E5\\u770B\\u7B54\\u6848"})`
-    : 'i&&!i.visible&&(!n.props||!n.props.mockExamMode||n.canConfirm(t.qId))?(0,e.jsx)("span",{className:"review-answer-btn",onClick:function(){n.props&&n.props.mockExamMode?n.confirmAnswer(t.qId):i.visible=!0},children:n.props&&n.props.mockExamMode?"确认答案":"\\u67E5\\u770B\\u7B54\\u6848"})';
-  return replaceOnce(source, old, replacement, `${mobile ? "移动" : "PC"}确认按钮`);
+  return replaceOnce(source, old, reviewButtonV1(mobile, storeVar, reviewVar, questionVar, buttonVar, jsxVar), `${mobile ? "移动" : "PC"}确认按钮`);
+}
+
+function patchReviewResult(source, mobile, storeVar = "n", reviewVar = mobile ? "t" : "i", questionVar = "r.qId", buttonVar = "R.Z", jsxVar = "e") {
+  const reviewButton = reviewButtonV1(mobile, storeVar, reviewVar, questionVar, buttonVar, jsxVar);
+  const resultCorrect = `Object.keys(${reviewVar}).filter(function(r){return r!=="visible"}).every(function(r){var a=${reviewVar}[r];return!!a.isCorrect===!!a.selected})`;
+  const result = mobile
+    ? `${reviewVar}?${reviewVar}.visible&&${storeVar}.props&&${storeVar}.props.mockExamMode?(0,${jsxVar}.jsx)("span",{className:"review-answer-btn",style:{marginTop:10,cursor:"default",color:${resultCorrect}?"#00bf6f":"#ff6d56"},children:${resultCorrect}?"回答正确":"回答错误（绿色选项为正确答案）"}):${reviewButton}:(0,${jsxVar}.jsx)(${jsxVar}.Fragment,{})`
+    : `${reviewVar}?${reviewVar}.visible&&${storeVar}.props&&${storeVar}.props.mockExamMode?(0,${jsxVar}.jsx)("span",{className:"review-answer-btn",style:{cursor:"default",color:${resultCorrect}?"#00bf6f":"#ff6d56"},children:${resultCorrect}?"回答正确":"回答错误（绿色选项为正确答案）"}):${reviewButton}:(0,${jsxVar}.jsx)(${jsxVar}.Fragment,{})`;
+  return `${resultMarker}\n${replaceOnce(source, reviewButton, result, `${mobile ? "移动" : "PC"}模拟考确认结果`)}`;
 }
 
 function patchUmi(source) {
@@ -184,10 +200,72 @@ function repairBrokenSettingBundle(patchedUmi) {
   return nextUmiName;
 }
 
+function upgradeConfirmedResult(patchedUmi) {
+  const names = readdirSync(staticDir).filter(name => name.endsWith(".js"));
+  const bundles = [
+    { id: "1004", prefix: "1004", mobile: false, storeVar: "n", reviewVar: "i", questionVar: "t.qId" },
+    { id: "3428", prefix: "3428", mobile: true, storeVar: "n", reviewVar: "t", questionVar: "r.qId" },
+    { id: "778", prefix: "778", mobile: true, storeVar: "c", reviewVar: "d", questionVar: "C.qId", buttonVar: "ye.Z", jsxVar: "i" }
+  ].map(bundle => ({
+    ...bundle,
+    name: names.find(name => name.startsWith(`${bundle.prefix}.`) && name.endsWith(".async.js") && read(name).includes(marker))
+  }));
+  if (bundles.some(bundle => !bundle.name)) throw new Error("缺少已补丁的题目渲染 bundle");
+  const upgraded = bundles.filter(bundle => read(bundle.name).includes(resultMarker));
+  if (upgraded.length === bundles.length) return patchedUmi;
+  if (upgraded.length > 0) throw new Error("题目确认结果补丁状态不一致，拒绝生成半成品");
+
+  const changed = bundles.map(bundle => ({
+    ...bundle,
+    content: patchReviewResult(read(bundle.name), bundle.mobile, bundle.storeVar, bundle.reviewVar, bundle.questionVar, bundle.buttonVar, bundle.jsxVar),
+  }));
+  changed.forEach(bundle => checkSource(bundle.content, `${bundle.prefix} 确认结果 bundle`));
+
+  const renamed = changed.map(bundle => ({
+    ...bundle,
+    nextName: renameWithHash(bundle.name, bundle.content)
+  }));
+  let umi = read(patchedUmi);
+  renamed.forEach(bundle => {
+    const oldHash = bundle.name.match(/\.([0-9a-f]{8})\.async\.js$/)[1];
+    const nextHash = bundle.nextName.match(/\.([0-9a-f]{8})\.async\.js$/)[1];
+    umi = replaceOnce(umi, `"${bundle.id}":"${oldHash}"`, `"${bundle.id}":"${nextHash}"`, `更新确认结果 chunk ${bundle.id}`);
+  });
+  checkSource(umi, "确认结果 Umi runtime");
+  const nextUmiName = renameWithHash(patchedUmi, umi);
+
+  let index = read("index.html");
+  index = replaceOnce(index, `/${patchedUmi}`, `/${nextUmiName}`, "更新确认结果 Umi 引用");
+  const renameMap = Object.fromEntries(renamed.map(bundle => [bundle.name, bundle.nextName]));
+  renameMap[patchedUmi] = nextUmiName;
+  const manifest = JSON.parse(read("asset-manifest.json"));
+  const renamedManifest = Object.fromEntries(Object.entries(manifest).map(([key, value]) => {
+    const nextKey = renameMap[key.slice(1)] ? `/${renameMap[key.slice(1)]}` : key;
+    const nextValue = typeof value === "string" && renameMap[value.slice(1)] ? `/${renameMap[value.slice(1)]}` : value;
+    return [nextKey, nextValue];
+  }));
+  renamed.forEach(bundle => { renamedManifest[`/${bundle.prefix}.js`] = `/${bundle.nextName}`; });
+  renamedManifest["/umi.js"] = `/${nextUmiName}`;
+  const manifestText = `${JSON.stringify(renamedManifest, null, 2)}\n`;
+  if (index.includes(patchedUmi) || manifestText.includes(patchedUmi) || renamed.some(bundle => manifestText.includes(bundle.name)) || renamed.some(bundle => umi.includes(bundle.name.match(/\.([0-9a-f]{8})\.async\.js$/)[1]))) {
+    throw new Error("确认结果升级后仍存在旧静态资源引用");
+  }
+
+  renamed.forEach(bundle => writeFileSync(path.join(staticDir, bundle.nextName), bundle.content));
+  writeFileSync(path.join(staticDir, nextUmiName), umi);
+  writeFileSync(path.join(staticDir, "index.html"), index);
+  writeFileSync(path.join(staticDir, "asset-manifest.json"), manifestText);
+  renamed.forEach(bundle => unlinkSync(path.join(staticDir, bundle.name)));
+  unlinkSync(path.join(staticDir, patchedUmi));
+  console.log(`已增加模拟考确认结果文案：${renamed.map(bundle => `${bundle.name} -> ${bundle.nextName}`).join("，")}`);
+  return nextUmiName;
+}
+
 function main() {
   let patchedUmi = findPatchedUmi();
   if (patchedUmi) {
     patchedUmi = repairBrokenSettingBundle(patchedUmi);
+    patchedUmi = upgradeConfirmedResult(patchedUmi);
     const names = readdirSync(staticDir).filter(name => name.endsWith(".js"));
     checkJs(names);
     const manifest = JSON.parse(read("asset-manifest.json"));
@@ -195,6 +273,7 @@ function main() {
     if (required.some(name => !name || !read(name).includes(marker))) throw new Error("模拟考补丁资源缺少一致性标记");
     const settingName = required[0];
     if (!read(settingName).includes(fixedSettingAnchor) || read(settingName).includes(brokenSettingAnchor)) throw new Error("设置页模拟考开关未作为独立子节点渲染");
+    if (required.slice(3).some(name => !read(name).includes(resultMarker))) throw new Error("模拟考确认结果文案补丁缺失");
     if (Object.values(manifest).some(value => typeof value === "string" && /(?:2fa0838a|56f145bb|195ecc51|06dee260|67a0426c|464a191a|c1ebddb4)/.test(value))) throw new Error("manifest 仍引用旧 bundle 哈希");
     console.log(`模拟考静态补丁已存在，完成一致性校验：${patchedUmi}`);
     return;
@@ -214,9 +293,9 @@ function main() {
     [original.setting]: patchSetting(read(original.setting)),
     [original.answer]: patchAnswer(read(original.answer)),
     [original.core]: patchCore(read(original.core)),
-    [original.pc]: addMarker(patchReviewButton(read(original.pc), false, "n", "i", "t.qId")),
-    [original.tablet]: addMarker(patchReviewButton(read(original.tablet), true, "n", "t", "r.qId")),
-    [original.mobile]: addMarker(patchReviewButton(read(original.mobile), true, "c", "d", "C.qId", "ye.Z", "i")),
+    [original.pc]: addMarker(patchReviewResult(patchReviewButton(read(original.pc), false, "n", "i", "t.qId"), false, "n", "i", "t.qId")),
+    [original.tablet]: addMarker(patchReviewResult(patchReviewButton(read(original.tablet), true, "n", "t", "r.qId"), true, "n", "t", "r.qId")),
+    [original.mobile]: addMarker(patchReviewResult(patchReviewButton(read(original.mobile), true, "c", "d", "C.qId", "ye.Z", "i"), true, "c", "d", "C.qId", "ye.Z", "i")),
     [original.umi]: patchUmi(read(original.umi))
   };
   const names = Object.keys(changed);
