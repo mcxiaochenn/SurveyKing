@@ -20,6 +20,10 @@ import path from "node:path";
 
 const staticDir = path.resolve(fileURLToPath(new URL("../server/api/src/main/resources/static/", import.meta.url)));
 const marker = "/* surveyking-mock-exam-patch:v1 */";
+const mockSwitch = '(0,k.jsx)(le.rs,{name:"mockExamMode",title:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.title",defaultMessage:"模拟考模式"}),tooltip:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.tooltip",defaultMessage:"作答后需点击确认答案，确认后显示正误、正确答案与解析，并且不能再次修改。"})})';
+const settingDelimiter = '),(0,k.jsx)(le.rs,{name:"randomSurveyWrong"';
+const brokenSettingAnchor = `,${mockSwitch}${settingDelimiter}`;
+const fixedSettingAnchor = `),${mockSwitch},(0,k.jsx)(le.rs,{name:"randomSurveyWrong"`;
 const baseline = {
   "p__survey__Setting.2fa0838a.async.js": "a5ad88d4e34d880ba0cbe7724f70072f3c55c5594a842c2d22172d5cc921cf3c",
   "p__Answer.56f145bb.async.js": "c5242f818fd8b59fed35ca5ca87d0616ec450672e603b99a1e25390394352518",
@@ -60,14 +64,14 @@ const assertBaseline = () => Object.entries(baseline).forEach(([name, expected])
 });
 const findPatchedUmi = () => readdirSync(staticDir).find(name => /^umi\.[0-9a-f]{8}\.js$/.test(name) && read(name).includes(marker));
 const checkJs = names => names.forEach(name => execFileSync(process.execPath, ["--check", path.join(staticDir, name)], { stdio: "inherit" }));
+const checkSource = (source, label) => execFileSync(process.execPath, ["--check", "-"], { input: source, stdio: ["pipe", "inherit", "inherit"] });
 const addMarker = source => `${marker}\n${source}`;
 
 function patchSetting(source) {
   const start = source.indexOf('(0,k.jsx)(le.rs,{name:"exerciseMode"');
-  const end = source.indexOf('),(0,k.jsx)(le.rs,{name:"randomSurveyWrong"', start);
+  const end = source.indexOf(settingDelimiter, start);
   if (start < 0 || end < 0 || end <= start) throw new Error("设置页 exerciseMode 锚点缺失");
-  const mockSwitch = '(0,k.jsx)(le.rs,{name:"mockExamMode",title:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.title",defaultMessage:"模拟考模式"}),tooltip:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.tooltip",defaultMessage:"作答后需点击确认答案，确认后显示正误、正确答案与解析，并且不能再次修改。"})})';
-  source = `${source.slice(0, end)},${mockSwitch}${source.slice(end)}`;
+  source = replaceOnce(source, settingDelimiter, `),${mockSwitch},(0,k.jsx)(le.rs,{name:"randomSurveyWrong"`, "设置页模拟考开关");
   source = replaceOnce(source,
     '$t==="examSetting.randomSurveyWrong"&&Rn===!0&&(un("examSetting.exerciseMode",!0),un("examSetting.randomSurvey",void 0)),',
     '$t==="examSetting.mockExamMode"&&Rn===!0&&(un("examSetting.exerciseMode",!1),un("examSetting.randomSurveyWrong",!1)),$t==="examSetting.exerciseMode"&&Rn===!0&&un("examSetting.mockExamMode",!1),$t==="examSetting.exerciseMode"&&Rn===!1&&un("examSetting.randomSurveyWrong",!1),$t==="examSetting.randomSurveyWrong"&&Rn===!0&&(un("examSetting.exerciseMode",!0),un("examSetting.mockExamMode",!1),un("examSetting.randomSurvey",void 0)),',
@@ -136,14 +140,61 @@ function renameWithHash(originalName, content) {
   return `${base}.${sha256(content).slice(0, 8)}${ext}`;
 }
 
+function repairBrokenSettingBundle(patchedUmi) {
+  const names = readdirSync(staticDir).filter(name => name.endsWith(".js"));
+  const settingName = names.find(name => name.startsWith("p__survey__Setting.") && name.endsWith(".async.js") && read(name).includes(marker));
+  if (!settingName) throw new Error("缺少已补丁的设置页 bundle");
+  const setting = read(settingName);
+  if (setting.includes(fixedSettingAnchor)) return patchedUmi;
+  if (!setting.includes(brokenSettingAnchor)) throw new Error("设置页模拟考开关结构未知，拒绝自动修复");
+
+  const repairedSetting = replaceOnce(setting, brokenSettingAnchor, fixedSettingAnchor, "修复设置页模拟考开关参数位置");
+  checkSource(repairedSetting, "设置页 bundle");
+  const nextSettingName = renameWithHash(settingName, repairedSetting);
+  const oldSettingHash = settingName.match(/\.([0-9a-f]{8})\.async\.js$/)[1];
+  const nextSettingHash = nextSettingName.match(/\.([0-9a-f]{8})\.async\.js$/)[1];
+
+  let umi = read(patchedUmi);
+  umi = replaceOnce(umi, `"1117":"${oldSettingHash}"`, `"1117":"${nextSettingHash}"`, "更新设置页 chunk 哈希");
+  checkSource(umi, "Umi runtime");
+  const nextUmiName = renameWithHash(patchedUmi, umi);
+
+  let index = read("index.html");
+  index = replaceOnce(index, `/${patchedUmi}`, `/${nextUmiName}`, "更新 index Umi 引用");
+  const manifest = JSON.parse(read("asset-manifest.json"));
+  const renamedManifest = Object.fromEntries(Object.entries(manifest).map(([key, value]) => {
+    const nextKey = key === `/${settingName}` ? `/${nextSettingName}` : key === `/${patchedUmi}` ? `/${nextUmiName}` : key;
+    const nextValue = value === `/${settingName}` ? `/${nextSettingName}` : value === `/${patchedUmi}` ? `/${nextUmiName}` : value;
+    return [nextKey, nextValue];
+  }));
+  renamedManifest["/p__survey__Setting.js"] = `/${nextSettingName}`;
+  renamedManifest["/umi.js"] = `/${nextUmiName}`;
+  const manifestText = `${JSON.stringify(renamedManifest, null, 2)}\n`;
+  if (index.includes(patchedUmi) || manifestText.includes(settingName) || manifestText.includes(patchedUmi) || umi.includes(`"1117":"${oldSettingHash}"`)) {
+    throw new Error("修复后仍存在旧设置页或 Umi 引用");
+  }
+
+  writeFileSync(path.join(staticDir, nextSettingName), repairedSetting);
+  writeFileSync(path.join(staticDir, nextUmiName), umi);
+  writeFileSync(path.join(staticDir, "index.html"), index);
+  writeFileSync(path.join(staticDir, "asset-manifest.json"), manifestText);
+  unlinkSync(path.join(staticDir, settingName));
+  unlinkSync(path.join(staticDir, patchedUmi));
+  console.log(`已修复设置页模拟考开关渲染：${settingName} -> ${nextSettingName}`);
+  return nextUmiName;
+}
+
 function main() {
-  const patchedUmi = findPatchedUmi();
+  let patchedUmi = findPatchedUmi();
   if (patchedUmi) {
+    patchedUmi = repairBrokenSettingBundle(patchedUmi);
     const names = readdirSync(staticDir).filter(name => name.endsWith(".js"));
     checkJs(names);
     const manifest = JSON.parse(read("asset-manifest.json"));
     const required = ["p__survey__Setting", "p__Answer", "8068", "1004", "3428", "778"].map(prefix => names.find(name => name.startsWith(`${prefix}.`) && name.endsWith(".async.js")));
     if (required.some(name => !name || !read(name).includes(marker))) throw new Error("模拟考补丁资源缺少一致性标记");
+    const settingName = required[0];
+    if (!read(settingName).includes(fixedSettingAnchor) || read(settingName).includes(brokenSettingAnchor)) throw new Error("设置页模拟考开关未作为独立子节点渲染");
     if (Object.values(manifest).some(value => typeof value === "string" && /(?:2fa0838a|56f145bb|195ecc51|06dee260|67a0426c|464a191a|c1ebddb4)/.test(value))) throw new Error("manifest 仍引用旧 bundle 哈希");
     console.log(`模拟考静态补丁已存在，完成一致性校验：${patchedUmi}`);
     return;
