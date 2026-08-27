@@ -4,6 +4,7 @@ import cn.surveyking.server.core.base.mapper.BaseModelMapper;
 import cn.surveyking.server.core.constant.ProjectModeEnum;
 import cn.surveyking.server.core.uitls.SchemaHelper;
 import cn.surveyking.server.domain.dto.ProjectRequest;
+import cn.surveyking.server.domain.dto.ProjectSetting;
 import cn.surveyking.server.domain.dto.ProjectView;
 import cn.surveyking.server.domain.dto.PublicProjectView;
 import cn.surveyking.server.domain.dto.SurveySchema;
@@ -36,10 +37,8 @@ public interface ProjectViewMapper extends BaseModelMapper<ProjectRequest, Proje
 	@AfterMapping
 	default void calledWithSourceAndTargetType(ProjectView source, @MappingTarget PublicProjectView view) {
 		view.setSurvey(view.getSurvey().deepCopy());
-		// 非练习模式需要去掉 schema 里面的答案信息
-		if (ProjectModeEnum.exam.equals(source.getMode())
-				&& !((source.getSetting() != null && source.getSetting().getExamSetting() != null
-						&& Boolean.TRUE.equals(source.getSetting().getExamSetting().getExerciseMode())))) {
+		// 普通考试需要去掉 schema 里面的答案信息；练习和模拟考需要在浏览器本地判题
+		if (ProjectModeEnum.exam.equals(source.getMode()) && !shouldExposeExamAnswer(source)) {
 			trimExamAnswerInfo(view.getSurvey());
 		}
 		// 考试模式，随机问题顺序
@@ -48,6 +47,13 @@ public interface ProjectViewMapper extends BaseModelMapper<ProjectRequest, Proje
 						&& Boolean.TRUE.equals(source.getSetting().getExamSetting().getRandomOrder())))) {
 			randomSchemaOrder(view.getSurvey());
 		}
+	}
+
+	default boolean shouldExposeExamAnswer(ProjectView source) {
+		ProjectSetting.ExamSetting examSetting = source.getSetting() == null ? null : source.getSetting().getExamSetting();
+		return examSetting != null
+				&& (Boolean.TRUE.equals(examSetting.getExerciseMode())
+				|| Boolean.TRUE.equals(examSetting.getMockExamMode()));
 	}
 
 	default void trimExamAnswerInfo(SurveySchema schema) {
