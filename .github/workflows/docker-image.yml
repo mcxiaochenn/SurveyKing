@@ -64,7 +64,7 @@ jobs:
       MYSQL_PASSWORD: ci_surveyking_password
       MYSQL_ROOT_PASSWORD: ci_root_password
       SURVEYKING_PORT: 1991
-      SURVEYKING_IMAGE: ghcr.io/${{ env.IMAGE_NAME }}:latest
+      SURVEYKING_IMAGE: ghcr.io/${{ github.repository_owner }}/surveyking:latest
       JAVA_OPTS: -Xms128m -Xmx512m -Duser.timezone=Asia/Shanghai
     outputs:
       passed: ${{ steps.smoke.outputs.passed }}
