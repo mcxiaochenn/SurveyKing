@@ -21,6 +21,7 @@ import path from "node:path";
 const staticDir = path.resolve(fileURLToPath(new URL("../server/api/src/main/resources/static/", import.meta.url)));
 const marker = "/* surveyking-mock-exam-patch:v1 */";
 const resultMarker = "/* surveyking-mock-exam-result:v2 */";
+const lockMarker = "/* surveyking-mock-exam-lock:v3 */";
 const mockSwitch = '(0,k.jsx)(le.rs,{name:"mockExamMode",title:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.title",defaultMessage:"模拟考模式"}),tooltip:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.tooltip",defaultMessage:"作答后需点击确认答案，确认后显示正误、正确答案与解析，并且不能再次修改。"})})';
 const settingDelimiter = '),(0,k.jsx)(le.rs,{name:"randomSurveyWrong"';
 const brokenSettingAnchor = `,${mockSwitch}${settingDelimiter}`;
@@ -261,11 +262,60 @@ function upgradeConfirmedResult(patchedUmi) {
   return nextUmiName;
 }
 
+function patchQuestionLock(source) {
+  const oldLock = '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.pattern="readPretty",i.editable=!1})}';
+  const nextLock = '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.editable=!1})}';
+  return `${lockMarker}\n${replaceOnce(source, oldLock, nextLock, "模拟考锁题保持判题渲染")}`;
+}
+
+function upgradeQuestionLock(patchedUmi) {
+  const names = readdirSync(staticDir).filter(name => name.endsWith(".js"));
+  const coreName = names.find(name => name.startsWith("8068.") && name.endsWith(".async.js") && read(name).includes(marker));
+  if (!coreName) throw new Error("缺少已补丁的答题核心 bundle");
+  const core = read(coreName);
+  if (core.includes(lockMarker)) return patchedUmi;
+
+  const upgradedCore = patchQuestionLock(core);
+  checkSource(upgradedCore, "模拟考锁题核心 bundle");
+  const nextCoreName = renameWithHash(coreName, upgradedCore);
+  const oldHash = coreName.match(/\.([0-9a-f]{8})\.async\.js$/)[1];
+  const nextHash = nextCoreName.match(/\.([0-9a-f]{8})\.async\.js$/)[1];
+  let umi = read(patchedUmi);
+  umi = replaceOnce(umi, `"8068":"${oldHash}"`, `"8068":"${nextHash}"`, "更新锁题核心 chunk");
+  checkSource(umi, "模拟考锁题 Umi runtime");
+  const nextUmiName = renameWithHash(patchedUmi, umi);
+
+  let index = read("index.html");
+  index = replaceOnce(index, `/${patchedUmi}`, `/${nextUmiName}`, "更新锁题 Umi 引用");
+  const manifest = JSON.parse(read("asset-manifest.json"));
+  const renamedManifest = Object.fromEntries(Object.entries(manifest).map(([key, value]) => {
+    const nextKey = key === `/${coreName}` ? `/${nextCoreName}` : key === `/${patchedUmi}` ? `/${nextUmiName}` : key;
+    const nextValue = value === `/${coreName}` ? `/${nextCoreName}` : value === `/${patchedUmi}` ? `/${nextUmiName}` : value;
+    return [nextKey, nextValue];
+  }));
+  renamedManifest["/8068.js"] = `/${nextCoreName}`;
+  renamedManifest["/umi.js"] = `/${nextUmiName}`;
+  const manifestText = `${JSON.stringify(renamedManifest, null, 2)}\n`;
+  if (index.includes(patchedUmi) || manifestText.includes(coreName) || manifestText.includes(patchedUmi) || umi.includes(`"8068":"${oldHash}"`)) {
+    throw new Error("锁题升级后仍存在旧核心资源引用");
+  }
+
+  writeFileSync(path.join(staticDir, nextCoreName), upgradedCore);
+  writeFileSync(path.join(staticDir, nextUmiName), umi);
+  writeFileSync(path.join(staticDir, "index.html"), index);
+  writeFileSync(path.join(staticDir, "asset-manifest.json"), manifestText);
+  unlinkSync(path.join(staticDir, coreName));
+  unlinkSync(path.join(staticDir, patchedUmi));
+  console.log(`已修复模拟考锁题渲染：${coreName} -> ${nextCoreName}`);
+  return nextUmiName;
+}
+
 function main() {
   let patchedUmi = findPatchedUmi();
   if (patchedUmi) {
     patchedUmi = repairBrokenSettingBundle(patchedUmi);
     patchedUmi = upgradeConfirmedResult(patchedUmi);
+    patchedUmi = upgradeQuestionLock(patchedUmi);
     const names = readdirSync(staticDir).filter(name => name.endsWith(".js"));
     checkJs(names);
     const manifest = JSON.parse(read("asset-manifest.json"));
@@ -274,6 +324,7 @@ function main() {
     const settingName = required[0];
     if (!read(settingName).includes(fixedSettingAnchor) || read(settingName).includes(brokenSettingAnchor)) throw new Error("设置页模拟考开关未作为独立子节点渲染");
     if (required.slice(3).some(name => !read(name).includes(resultMarker))) throw new Error("模拟考确认结果文案补丁缺失");
+    if (!read(required[2]).includes(lockMarker)) throw new Error("模拟考锁题渲染补丁缺失");
     if (Object.values(manifest).some(value => typeof value === "string" && /(?:2fa0838a|56f145bb|195ecc51|06dee260|67a0426c|464a191a|c1ebddb4)/.test(value))) throw new Error("manifest 仍引用旧 bundle 哈希");
     console.log(`模拟考静态补丁已存在，完成一致性校验：${patchedUmi}`);
     return;
@@ -292,7 +343,7 @@ function main() {
   const changed = {
     [original.setting]: patchSetting(read(original.setting)),
     [original.answer]: patchAnswer(read(original.answer)),
-    [original.core]: patchCore(read(original.core)),
+    [original.core]: patchQuestionLock(patchCore(read(original.core))),
     [original.pc]: addMarker(patchReviewResult(patchReviewButton(read(original.pc), false, "n", "i", "t.qId"), false, "n", "i", "t.qId")),
     [original.tablet]: addMarker(patchReviewResult(patchReviewButton(read(original.tablet), true, "n", "t", "r.qId"), true, "n", "t", "r.qId")),
     [original.mobile]: addMarker(patchReviewResult(patchReviewButton(read(original.mobile), true, "c", "d", "C.qId", "ye.Z", "i"), true, "c", "d", "C.qId", "ye.Z", "i")),
