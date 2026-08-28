@@ -21,7 +21,7 @@ import path from "node:path";
 const staticDir = path.resolve(fileURLToPath(new URL("../server/api/src/main/resources/static/", import.meta.url)));
 const marker = "/* surveyking-mock-exam-patch:v1 */";
 const resultMarker = "/* surveyking-mock-exam-result:v2 */";
-const lockMarker = "/* surveyking-mock-exam-lock:v3 */";
+const lockMarker = "/* surveyking-mock-exam-lock:v4 */";
 const mockSwitch = '(0,k.jsx)(le.rs,{name:"mockExamMode",title:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.title",defaultMessage:"模拟考模式"}),tooltip:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.tooltip",defaultMessage:"作答后需点击确认答案，确认后显示正误、正确答案与解析，并且不能再次修改。"})})';
 const settingDelimiter = '),(0,k.jsx)(le.rs,{name:"randomSurveyWrong"';
 const brokenSettingAnchor = `,${mockSwitch}${settingDelimiter}`;
@@ -263,8 +263,13 @@ function upgradeConfirmedResult(patchedUmi) {
 }
 
 function patchQuestionLock(source) {
-  const oldLock = '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.pattern="readPretty",i.editable=!1})}';
-  const nextLock = '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.editable=!1})}';
+  const oldLocks = [
+    '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.pattern="readPretty",i.editable=!1})}',
+    '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.editable=!1})}'
+  ];
+  const oldLock = oldLocks.find(candidate => source.includes(candidate));
+  if (!oldLock) throw new Error("未找到模拟考锁题方法");
+  const nextLock = '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.editable=!1,i.disabled=!0})}';
   return `${lockMarker}\n${replaceOnce(source, oldLock, nextLock, "模拟考锁题保持判题渲染")}`;
 }
 
