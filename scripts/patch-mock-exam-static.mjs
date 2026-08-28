@@ -21,7 +21,8 @@ import path from "node:path";
 const staticDir = path.resolve(fileURLToPath(new URL("../server/api/src/main/resources/static/", import.meta.url)));
 const marker = "/* surveyking-mock-exam-patch:v1 */";
 const resultMarker = "/* surveyking-mock-exam-result:v2 */";
-const lockMarker = "/* surveyking-mock-exam-lock:v4 */";
+const lockMarker = "/* surveyking-mock-exam-lock:v5 */";
+const guardMarker = "/* surveyking-mock-exam-change-guard:v1 */";
 const mockSwitch = '(0,k.jsx)(le.rs,{name:"mockExamMode",title:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.title",defaultMessage:"模拟考模式"}),tooltip:ge.formatMessage({id:"pages.survey.setting.exam.mockExamMode.tooltip",defaultMessage:"作答后需点击确认答案，确认后显示正误、正确答案与解析，并且不能再次修改。"})})';
 const settingDelimiter = '),(0,k.jsx)(le.rs,{name:"randomSurveyWrong"';
 const brokenSettingAnchor = `,${mockSwitch}${settingDelimiter}`;
@@ -44,6 +45,11 @@ const replaceOnce = (value, needle, replacement, label = needle) => {
   const occurrences = count(value, needle);
   if (occurrences !== 1) throw new Error(`${label} 预期出现 1 次，实际 ${occurrences} 次`);
   return value.replace(needle, replacement);
+};
+const replaceAllExact = (value, needle, replacement, expected, label = needle) => {
+  const occurrences = count(value, needle);
+  if (occurrences !== expected) throw new Error(`${label} 预期出现 ${expected} 次，实际 ${occurrences} 次`);
+  return value.split(needle).join(replacement);
 };
 const replaceNth = (value, needle, replacement, nth, label = needle) => {
   const occurrences = count(value, needle);
@@ -82,7 +88,7 @@ function patchSetting(source) {
 }
 
 function patchCore(source) {
-  source = replaceOnce(source, "this.reviewAnswer={},this.autoNextPage", "this.reviewAnswer={},this.confirmedQuestionIds={},this.autoNextPage", "Store 会话确认状态");
+  source = replaceOnce(source, "this.reviewAnswer={},this.autoNextPage", "this.reviewAnswer={},this.confirmedQuestionIds={},this.confirmedQuestionValues={},this.autoNextPage", "Store 会话确认状态");
   source = replaceOnce(source, "this.props.exerciseMode&&this.computeReviewAnswer(n.componentProps.schema,n.value)", "(this.props.exerciseMode||this.props.mockExamMode)&&this.computeReviewAnswer(n.componentProps.schema,n.value)", "Store 模拟考字段变化判题");
   source = replaceOnce(source, '(f==="Radio"||f==="Judge")&&(o.visible=!0)', '(f==="Radio"||f==="Judge")&&!this.props.mockExamMode&&(o.visible=!0)', "Store 模拟考延迟显示结果");
   source = replaceOnce(source,
@@ -98,6 +104,21 @@ function patchCore(source) {
   source = replaceOnce(source, methodsNeedle, methods, "Store 模拟考方法");
   source = replaceOnce(source, "case 0:n=\"\",t=this.form.query(\"*\").map()", "case 0:if(this.props.mockExamMode){var mockPendingQuestion=this.validateMockConfirm();if(mockPendingQuestion)return this.form.setFieldState(mockPendingQuestion,function(i){i.errors=[\"请先确认本题答案\"]}),this.changePageIndex(mockPendingQuestion),d.abrupt(\"return\")}n=\"\",t=this.form.query(\"*\").map()", "Store 交卷前模拟考拦截");
   return addMarker(source);
+}
+
+function patchConfirmedChangeGuard(source) {
+  const initialNeedle = "this.confirmedQuestionIds=Object.assign({},this.props.confirmedQuestionIds||{}),";
+  const initialReplacement = "this.confirmedQuestionIds=Object.assign({},this.props.confirmedQuestionIds||{}),this.confirmedQuestionValues=Object.keys(this.confirmedQuestionIds).reduce(function(a,g){var h=r.confirmedQuestionIds[g];return a[g]=h&&Object.prototype.hasOwnProperty.call(h,\"value\")?(0,y.ZN)(h.value):void 0,a},{}),";
+  source = replaceOnce(source, initialNeedle, initialReplacement, "Store 恢复确认答案快照");
+  source = replaceOnce(source,
+    'case 0:o=n.path.toString(),(a=(s=this.props).onFieldChange)===null||a===void 0||a.call(s,o,(0,y.ZN)(n.value)),',
+    'case 0:o=n.path.toString(),this.props.mockExamMode&&this.confirmedQuestionIds[o]&&this.confirmedQuestionValues[o]!==void 0&&JSON.stringify(n.value)!==JSON.stringify(this.confirmedQuestionValues[o])&&(this.form.setFieldValue(o,(0,y.ZN)(this.confirmedQuestionValues[o])),v.abrupt("return")),(a=(s=this.props).onFieldChange)===null||a===void 0||a.call(s,o,(0,y.ZN)(n.value)),',
+    "Store 阻止已确认题变更");
+  source = replaceOnce(source,
+    'i.confirmedQuestionIds[r]=!0,i.lockQuestion(r)',
+    'i.confirmedQuestionValues[r]=(0,y.ZN)(n.value),i.confirmedQuestionIds[r]=!0,i.lockQuestion(r)',
+    "Store 保存确认答案快照");
+  return `${guardMarker}\n${source}`;
 }
 
 function patchAnswer(source) {
@@ -265,7 +286,8 @@ function upgradeConfirmedResult(patchedUmi) {
 function patchQuestionLock(source) {
   const oldLocks = [
     '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.pattern="readPretty",i.editable=!1})}',
-    '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.editable=!1})}'
+    '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.editable=!1})}',
+    '},{key:"lockQuestion",value:function(r){this.form&&this.form.setFieldState(r,function(i){i.editable=!1,i.disabled=!0})}'
   ];
   const oldLock = oldLocks.find(candidate => source.includes(candidate));
   if (!oldLock) throw new Error("未找到模拟考锁题方法");
@@ -273,45 +295,82 @@ function patchQuestionLock(source) {
   return `${lockMarker}\n${replaceOnce(source, oldLock, nextLock, "模拟考锁题保持判题渲染")}`;
 }
 
+function patchRendererLocks(source, variant) {
+  const replacements = variant === "desktop" ? [
+    ['onChange:function(z,J){S||i(g(E,z,J))}', 'onChange:function(z,J){S||f.confirmedQuestionIds&&f.confirmedQuestionIds[n.id]||i(g(E,z,J))}', 1, "PC 多选选项锁定"],
+    ['onChange:function(z){return i(g(E,!0,z))}', 'onChange:function(z){return f.confirmedQuestionIds&&f.confirmedQuestionIds[n.id]?void 0:i(g(E,!0,z))}', 1, "PC 多选附加输入锁定"],
+    ['onChange:g,value:Object.keys(r)[0]', 'onChange:function(C){o.confirmedQuestionIds&&o.confirmedQuestionIds[n.id]||g(C)},value:Object.keys(r)[0]', 1, "PC 单选选项锁定"],
+    ['onChange:function(q){return s(B,q)}', 'onChange:function(q){return o.confirmedQuestionIds&&o.confirmedQuestionIds[n.id]?void 0:s(B,q)}', 2, "PC 单选选项及附加输入锁定"]
+  ] : variant === "tablet" ? [
+    ['L||C(w,q,ve)', 'L||g.confirmedQuestionIds&&g.confirmedQuestionIds[n.id]||C(w,q,ve)', 1, "平板多选选项锁定"],
+    ['onChange:function(q){return C(w,!0,q)}', 'onChange:function(q){return g.confirmedQuestionIds&&g.confirmedQuestionIds[n.id]?void 0:C(w,!0,q)}', 1, "平板多选附加输入锁定"],
+    ['onChange:function(Se){return E(b,Se)}', 'onChange:function(Se){return h.confirmedQuestionIds&&h.confirmedQuestionIds[t.id]?void 0:E(b,Se)}', 2, "平板单选选项及附加输入锁定"]
+  ] : [
+    ['dt||ne(Ye,It,Yt)', 'dt||de.confirmedQuestionIds&&de.confirmedQuestionIds[c.id]||ne(Ye,It,Yt)', 1, "移动多选选项锁定"],
+    ['onChange:function(It){return ne(Ye,!0,It)}', 'onChange:function(It){return de.confirmedQuestionIds&&de.confirmedQuestionIds[c.id]?void 0:ne(Ye,!0,It)}', 1, "移动多选附加输入锁定"],
+    ['onChange:function(un){return de(be,un)}', 'onChange:function(un){return P.confirmedQuestionIds&&P.confirmedQuestionIds[d.id]?void 0:de(be,un)}', 2, "移动单选选项及附加输入锁定"]
+  ];
+  return `${guardMarker}\n${replacements.reduce((result, [needle, replacement, expected, label]) => replaceAllExact(result, needle, replacement, expected, label), source)}`;
+}
+
 function upgradeQuestionLock(patchedUmi) {
   const names = readdirSync(staticDir).filter(name => name.endsWith(".js"));
   const coreName = names.find(name => name.startsWith("8068.") && name.endsWith(".async.js") && read(name).includes(marker));
   if (!coreName) throw new Error("缺少已补丁的答题核心 bundle");
   const core = read(coreName);
-  if (core.includes(lockMarker)) return patchedUmi;
+  const rendererSpecs = [
+    { prefix: "1004", chunkId: "1004", variant: "desktop" },
+    { prefix: "3428", chunkId: "3428", variant: "tablet" },
+    { prefix: "778", chunkId: "778", variant: "mobile" }
+  ];
+  const changed = [];
+  let upgradedCore = core;
+  if (!core.includes(lockMarker)) upgradedCore = patchQuestionLock(upgradedCore);
+  if (!core.includes(guardMarker)) upgradedCore = patchConfirmedChangeGuard(upgradedCore);
+  if (upgradedCore !== core) {
+    checkSource(upgradedCore, "模拟考锁题核心 bundle");
+    changed.push({ oldName: coreName, newName: renameWithHash(coreName, upgradedCore), source: upgradedCore, chunkId: "8068" });
+  }
+  for (const spec of rendererSpecs) {
+    const oldName = names.find(name => name.startsWith(`${spec.prefix}.`) && name.endsWith(".async.js"));
+    if (!oldName) throw new Error(`缺少题目渲染 bundle：${spec.prefix}`);
+    const source = read(oldName);
+    if (source.includes(guardMarker)) continue;
+    const patched = patchRendererLocks(source, spec.variant);
+    checkSource(patched, `${spec.prefix} 模拟考选项锁定 bundle`);
+    changed.push({ oldName, newName: renameWithHash(oldName, patched), source: patched, chunkId: spec.chunkId });
+  }
+  if (changed.length === 0) return patchedUmi;
 
-  const upgradedCore = patchQuestionLock(core);
-  checkSource(upgradedCore, "模拟考锁题核心 bundle");
-  const nextCoreName = renameWithHash(coreName, upgradedCore);
-  const oldHash = coreName.match(/\.([0-9a-f]{8})\.async\.js$/)[1];
-  const nextHash = nextCoreName.match(/\.([0-9a-f]{8})\.async\.js$/)[1];
   let umi = read(patchedUmi);
-  umi = replaceOnce(umi, `"8068":"${oldHash}"`, `"8068":"${nextHash}"`, "更新锁题核心 chunk");
+  for (const item of changed) {
+    const oldHash = item.oldName.match(/\.([0-9a-f]{8})(?:\.async)?\.js$/)[1];
+    const newHash = item.newName.match(/\.([0-9a-f]{8})(?:\.async)?\.js$/)[1];
+    umi = replaceOnce(umi, `"${item.chunkId}":"${oldHash}"`, `"${item.chunkId}":"${newHash}"`, `更新 ${item.chunkId} 锁定 chunk`);
+  }
   checkSource(umi, "模拟考锁题 Umi runtime");
   const nextUmiName = renameWithHash(patchedUmi, umi);
 
   let index = read("index.html");
   index = replaceOnce(index, `/${patchedUmi}`, `/${nextUmiName}`, "更新锁题 Umi 引用");
   const manifest = JSON.parse(read("asset-manifest.json"));
-  const renamedManifest = Object.fromEntries(Object.entries(manifest).map(([key, value]) => {
-    const nextKey = key === `/${coreName}` ? `/${nextCoreName}` : key === `/${patchedUmi}` ? `/${nextUmiName}` : key;
-    const nextValue = value === `/${coreName}` ? `/${nextCoreName}` : value === `/${patchedUmi}` ? `/${nextUmiName}` : value;
-    return [nextKey, nextValue];
-  }));
-  renamedManifest["/8068.js"] = `/${nextCoreName}`;
+  const renamed = new Map(changed.flatMap(item => [[`/${item.oldName}`, `/${item.newName}`]]));
+  renamed.set(`/${patchedUmi}`, `/${nextUmiName}`);
+  const renamedManifest = Object.fromEntries(Object.entries(manifest).map(([key, value]) => [renamed.get(key) || key, renamed.get(value) || value]));
+  for (const item of changed) renamedManifest[`/${item.chunkId}.js`] = `/${item.newName}`;
   renamedManifest["/umi.js"] = `/${nextUmiName}`;
   const manifestText = `${JSON.stringify(renamedManifest, null, 2)}\n`;
-  if (index.includes(patchedUmi) || manifestText.includes(coreName) || manifestText.includes(patchedUmi) || umi.includes(`"8068":"${oldHash}"`)) {
+  if (index.includes(patchedUmi) || [...renamed.keys()].some(oldName => manifestText.includes(oldName)) || [...changed].some(item => umi.includes(`"${item.chunkId}":"${item.oldName.match(/\.([0-9a-f]{8})(?:\.async)?\.js$/)[1]}"`))) {
     throw new Error("锁题升级后仍存在旧核心资源引用");
   }
 
-  writeFileSync(path.join(staticDir, nextCoreName), upgradedCore);
+  for (const item of changed) writeFileSync(path.join(staticDir, item.newName), item.source);
   writeFileSync(path.join(staticDir, nextUmiName), umi);
   writeFileSync(path.join(staticDir, "index.html"), index);
   writeFileSync(path.join(staticDir, "asset-manifest.json"), manifestText);
-  unlinkSync(path.join(staticDir, coreName));
+  for (const item of changed) unlinkSync(path.join(staticDir, item.oldName));
   unlinkSync(path.join(staticDir, patchedUmi));
-  console.log(`已修复模拟考锁题渲染：${coreName} -> ${nextCoreName}`);
+  console.log(`已修复模拟考锁题渲染：${changed.map(item => `${item.oldName} -> ${item.newName}`).join("，")}`);
   return nextUmiName;
 }
 
@@ -329,7 +388,9 @@ function main() {
     const settingName = required[0];
     if (!read(settingName).includes(fixedSettingAnchor) || read(settingName).includes(brokenSettingAnchor)) throw new Error("设置页模拟考开关未作为独立子节点渲染");
     if (required.slice(3).some(name => !read(name).includes(resultMarker))) throw new Error("模拟考确认结果文案补丁缺失");
+    if (required.slice(3).some(name => !read(name).includes(guardMarker))) throw new Error("模拟考选项锁定补丁缺失");
     if (!read(required[2]).includes(lockMarker)) throw new Error("模拟考锁题渲染补丁缺失");
+    if (!read(required[2]).includes(guardMarker)) throw new Error("模拟考变更拦截补丁缺失");
     if (Object.values(manifest).some(value => typeof value === "string" && /(?:2fa0838a|56f145bb|195ecc51|06dee260|67a0426c|464a191a|c1ebddb4)/.test(value))) throw new Error("manifest 仍引用旧 bundle 哈希");
     console.log(`模拟考静态补丁已存在，完成一致性校验：${patchedUmi}`);
     return;
@@ -348,10 +409,10 @@ function main() {
   const changed = {
     [original.setting]: patchSetting(read(original.setting)),
     [original.answer]: patchAnswer(read(original.answer)),
-    [original.core]: patchQuestionLock(patchCore(read(original.core))),
-    [original.pc]: addMarker(patchReviewResult(patchReviewButton(read(original.pc), false, "n", "i", "t.qId"), false, "n", "i", "t.qId")),
-    [original.tablet]: addMarker(patchReviewResult(patchReviewButton(read(original.tablet), true, "n", "t", "r.qId"), true, "n", "t", "r.qId")),
-    [original.mobile]: addMarker(patchReviewResult(patchReviewButton(read(original.mobile), true, "c", "d", "C.qId", "ye.Z", "i"), true, "c", "d", "C.qId", "ye.Z", "i")),
+    [original.core]: patchConfirmedChangeGuard(patchQuestionLock(patchCore(read(original.core)))),
+    [original.pc]: patchRendererLocks(addMarker(patchReviewResult(patchReviewButton(read(original.pc), false, "n", "i", "t.qId"), false, "n", "i", "t.qId")), "desktop"),
+    [original.tablet]: patchRendererLocks(addMarker(patchReviewResult(patchReviewButton(read(original.tablet), true, "n", "t", "r.qId"), true, "n", "t", "r.qId")), "tablet"),
+    [original.mobile]: patchRendererLocks(addMarker(patchReviewResult(patchReviewButton(read(original.mobile), true, "c", "d", "C.qId", "ye.Z", "i"), true, "c", "d", "C.qId", "ye.Z", "i")), "mobile"),
     [original.umi]: patchUmi(read(original.umi))
   };
   const names = Object.keys(changed);
